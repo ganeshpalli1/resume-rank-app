@@ -1,0 +1,9 @@
+@echo off
+echo Starting Python API server...
+start /b python src/services/jobDescriptionAnalyzer.py
+
+echo Waiting for API server to start...
+timeout /t 2 > nul
+
+echo Starting React frontend...
+npm run dev 
