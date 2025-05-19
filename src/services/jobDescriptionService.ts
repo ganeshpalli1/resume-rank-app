@@ -53,25 +53,171 @@ const retryRequest = async <T>(
 
 // Function to extract common skills from job description text
 const extractCommonSkills = (description: string): string[] => {
-  // List of common technical skills to look for
+  const cleanDescription = description.toLowerCase();
+  
+  // List of common technical skills to look for - expanded list
   const commonSkills = [
+    // Programming Languages
     "JavaScript", "TypeScript", "Python", "Java", "C#", "C++", "Ruby", "PHP", "Swift", "Kotlin", 
-    "React", "Angular", "Vue", "Node.js", "Express", "Django", "Flask", "Spring", "ASP.NET",
-    "AWS", "Azure", "GCP", "Docker", "Kubernetes", "CI/CD", "Git", "SQL", "NoSQL", "MongoDB",
-    "PostgreSQL", "MySQL", "GraphQL", "REST API", "Microservices", "DevOps", "Agile", "Scrum",
-    "HTML", "CSS", "SASS", "LESS", "Tailwind", "Bootstrap", "Redux", "Next.js", "Gatsby",
-    "Machine Learning", "AI", "Data Science", "Big Data", "Hadoop", "Spark", "TensorFlow",
-    "Blockchain", "IoT", "AR/VR", "Mobile Development", "iOS", "Android", "React Native",
-    "Flutter", "UI/UX", "Figma", "Sketch", "Adobe XD", "Photoshop", "Illustrator",
-    "Testing", "Jest", "Mocha", "Cypress", "Selenium", "TDD", "BDD"
+    "Go", "Rust", "Scala", "Perl", "R", "MATLAB", "Bash", "PowerShell", "Objective-C", "Dart",
+    
+    // Frontend Technologies
+    "React", "Angular", "Vue", "Next.js", "Gatsby", "Svelte", "jQuery", "Bootstrap", "Tailwind", 
+    "Material UI", "HTML", "CSS", "SASS", "LESS", "Redux", "MobX", "Storybook", "Webpack", "Babel", 
+    "ESLint", "Jest", "Cypress", "Enzyme", "RTL", "Vite", "Chakra UI", "Ant Design", "Emotion",
+    
+    // Backend Technologies
+    "Node.js", "Express", "Django", "Flask", "Spring", "ASP.NET", "Laravel", "Ruby on Rails", 
+    "FastAPI", "Nest.js", "GraphQL", "REST API", "gRPC", "WebSockets", "Socket.IO", "Kafka", 
+    "RabbitMQ", "Redis", "Celery", "Tornado", "Koa", "Hapi", "WebRTC",
+    
+    // Databases
+    "SQL", "NoSQL", "MongoDB", "PostgreSQL", "MySQL", "SQLite", "Oracle", "Firebase", "DynamoDB", 
+    "Cassandra", "Redis", "Elasticsearch", "Neo4j", "MariaDB", "CouchDB", "Fauna", "Supabase", 
+    "PlanetScale", "Prisma", "Sequelize", "TypeORM", "Mongoose", "Knex",
+    
+    // Cloud & DevOps
+    "AWS", "Azure", "GCP", "Docker", "Kubernetes", "CI/CD", "Jenkins", "GitHub Actions", "GitLab CI", 
+    "Terraform", "Ansible", "Puppet", "Chef", "Pulumi", "Heroku", "Vercel", "Netlify", "Cloudflare", 
+    "Firebase", "Nginx", "Apache", "Serverless", "AWS Lambda", "Azure Functions", "GCP Functions",
+    "GitHub", "GitLab", "Bitbucket", "Jira", "Confluence", "CircleCI", "Travis CI", "ArgoCD", "Helm",
+    
+    // AI, ML, Data Science
+    "Machine Learning", "AI", "Artificial Intelligence", "Data Science", "NLP", "Computer Vision", 
+    "Deep Learning", "TensorFlow", "PyTorch", "Scikit-learn", "Pandas", "NumPy", "Keras", "OpenCV", 
+    "NLTK", "spaCy", "Transformers", "Hugging Face", "MLOps", "Data Mining", "Data Visualization",
+    "Jupyter", "Tableau", "Power BI", "D3.js", "Matplotlib", "Seaborn", "YOLO", "GPT", "BERT",
+    
+    // Mobile Development
+    "iOS", "Android", "React Native", "Flutter", "Xamarin", "Ionic", "Swift", "Kotlin", "Objective-C", 
+    "Java", "Mobile UI/UX", "SwiftUI", "Jetpack Compose", "Cordova", "Electron", "Progressive Web Apps",
+    "XCode", "Android Studio", "Mobile Testing", "TestFlight", "Firebase",
+    
+    // Web3, Blockchain
+    "Blockchain", "Ethereum", "Solidity", "Smart Contracts", "Web3.js", "DApps", "NFT", "Cryptocurrency",
+    "Rust", "Solana", "Polygon", "Hardhat", "Truffle", "Ganache", "IPFS", "MetaMask",
+    
+    // Design & UX
+    "Figma", "Sketch", "Adobe XD", "Photoshop", "Illustrator", "UI/UX", "User Experience", 
+    "User Interface", "Design Systems", "Wireframing", "Prototyping", "User Research", "Usability Testing",
+    
+    // Testing & QA
+    "Testing", "QA", "Jest", "Mocha", "Cypress", "Selenium", "TestRail", "TestCafe", "Appium", 
+    "TDD", "BDD", "Playwright", "Puppeteer", "JUnit", "PyTest", "Cucumber", "Jasmine", "Karma", 
+    "Performance Testing", "Load Testing", "A/B Testing", "End-to-End Testing", "Unit Testing",
+    
+    // Project Management, Methodologies & Soft Skills
+    "Agile", "Scrum", "Kanban", "Waterfall", "SAFe", "Lean", "Product Management", "Project Management",
+    "Communication", "Leadership", "Teamwork", "Problem Solving", "Critical Thinking", "Jira",
+    "Confluence", "Trello", "Asana", "Monday.com", "ClickUp", "Notion",
+    
+    // Network & Security
+    "Cybersecurity", "Network Security", "Penetration Testing", "Ethical Hacking", "OWASP", 
+    "Authentication", "Authorization", "OAuth", "JWT", "HTTPS", "SSL/TLS", "VPN", "Firewall", 
+    "SOC", "SIEM", "CISSP", "CEH", "CompTIA", "Security+", "Cryptography",
+    
+    // Desktop & Systems
+    "Windows", "Linux", "macOS", "Unix", "Shell Scripting", "PowerShell", "Bash", "System Administration",
+    "Desktop Applications", "Qt", "WPF", "Electron", "GTK", "Embedded Systems", "IoT",
+    
+    // Big Data
+    "Big Data", "Hadoop", "Spark", "Kafka", "Hive", "Pig", "Data Warehousing", "ETL", "Data Pipeline",
+    "Data Lake", "Data Engineering", "Airflow", "Snowflake", "Redshift", "BigQuery", "Databricks",
+    
+    // Domain Specific
+    "Fintech", "Healthtech", "Edtech", "E-commerce", "Gaming", "AR/VR", "3D Programming", "Unity",
+    "Unreal Engine", "Computer Graphics", "Digital Transformation", "CMS", "Salesforce", "SAP", "ERP",
+    "CRM", "SEO", "Digital Marketing", "Content Management", "Video Processing"
   ];
 
-  // Simple extraction based on case-insensitive matching
-  const extractedSkills = commonSkills.filter(skill => 
-    new RegExp(`\\b${skill.replace(/\./g, '\\.')}\\b`, 'i').test(description)
-  );
+  // Extract skills using multiple approaches
+  const extractedSkills = new Set<string>();
 
-  return extractedSkills;
+  // 1. Direct matching with common skills list (case-insensitive)
+  commonSkills.forEach(skill => {
+    const pattern = new RegExp(`\\b${skill.replace(/\./g, '\\.').replace(/\//g, '\\/')}\\b`, 'i');
+    if (pattern.test(cleanDescription)) {
+      extractedSkills.add(skill);
+    }
+    
+    // Also check plural forms of skills
+    const pluralPattern = new RegExp(`\\b${skill.replace(/\./g, '\\.').replace(/\//g, '\\/')}s\\b`, 'i');
+    if (pluralPattern.test(cleanDescription)) {
+      extractedSkills.add(skill);
+    }
+  });
+
+  // 2. Find skills mentioned in common skill-indicating phrases
+  const skillPhrases = [
+    /proficiency (?:in|with) ([\w\s\.\/#+-]+)/gi,
+    /experience (?:in|with) ([\w\s\.\/#+-]+)/gi,
+    /knowledge of ([\w\s\.\/#+-]+)/gi,
+    /familiar with ([\w\s\.\/#+-]+)/gi,
+    /skills (?:in|with) ([\w\s\.\/#+-]+)/gi,
+    /expertise (?:in|with) ([\w\s\.\/#+-]+)/gi,
+    /competency (?:in|with) ([\w\s\.\/#+-]+)/gi,
+    /background (?:in|with) ([\w\s\.\/#+-]+)/gi,
+    /working with ([\w\s\.\/#+-]+)/gi,
+    /proficient (?:in|with) ([\w\s\.\/#+-]+)/gi,
+    /understanding of ([\w\s\.\/#+-]+)/gi,
+    /ability to (use|work with|develop with|code in) ([\w\s\.\/#+-]+)/gi
+  ];
+
+  skillPhrases.forEach(phrase => {
+    const matches = description.matchAll(phrase);
+    for (const match of matches) {
+      if (match && match[1]) {
+        // Extract potential skill
+        const potentialSkill = match[1].trim().replace(/\.$/, '').replace(/,$/, '').replace(/\s+/g, ' ');
+        
+        // Check if it's a known skill or contains known skills
+        for (const skill of commonSkills) {
+          if (potentialSkill.toLowerCase().includes(skill.toLowerCase())) {
+            extractedSkills.add(skill);
+          }
+        }
+      }
+    }
+  });
+
+  // 3. Extract skills from list indicators (bullet points, numbered lists)
+  const listItemPattern = /[-•*]\s+([\w\s\.\/#+-]+)/g;
+  const listMatches = description.matchAll(listItemPattern);
+  
+  for (const match of listMatches) {
+    if (match && match[1]) {
+      const listItem = match[1].trim();
+      // Check if list item contains a known skill
+      for (const skill of commonSkills) {
+        if (listItem.toLowerCase().includes(skill.toLowerCase())) {
+          extractedSkills.add(skill);
+        }
+      }
+    }
+  }
+  
+  // 4. Find skills mentioned in technical requirement sections
+  const requirementSections = [
+    /technical (?:requirements|skills|qualifications)[\s\n:]*([^]*?)(?:\n\n|\n\r\n|$)/i,
+    /required (?:technical)? skills[\s\n:]*([^]*?)(?:\n\n|\n\r\n|$)/i,
+    /skills and qualifications[\s\n:]*([^]*?)(?:\n\n|\n\r\n|$)/i
+  ];
+  
+  requirementSections.forEach(sectionPattern => {
+    const sectionMatch = description.match(sectionPattern);
+    if (sectionMatch && sectionMatch[1]) {
+      const sectionText = sectionMatch[1];
+      // Check for skills in this section
+      for (const skill of commonSkills) {
+        const skillPattern = new RegExp(`\\b${skill.replace(/\./g, '\\.').replace(/\//g, '\\/')}\\b`, 'i');
+        if (skillPattern.test(sectionText)) {
+          extractedSkills.add(skill);
+        }
+      }
+    }
+  });
+
+  return Array.from(extractedSkills);
 };
 
 // Function to extract likely requirements from text

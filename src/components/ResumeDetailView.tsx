@@ -139,6 +139,25 @@ const ResumeDetailView: React.FC<ResumeDetailViewProps> = ({ score, onBack }) =>
                                   </div>
                                 ))}
                               </div>
+                              
+                              {/* Display skill context information if available and this is the Skills category */}
+                              {detail.category === "Skills" && detail.contexts && Object.keys(detail.contexts).length > 0 && (
+                                <div className="mt-3 pt-2 border-t border-gray-200">
+                                  <h4 className="text-xs font-semibold uppercase text-blue-700 mb-1">Skill Context</h4>
+                                  <div className="space-y-2">
+                                    {Object.entries(detail.contexts).map(([skill, contexts], cidx) => (
+                                      <div key={cidx} className="bg-blue-50 p-2 rounded text-xs">
+                                        <div className="font-medium text-blue-700">{skill}</div>
+                                        <ul className="ml-4 mt-1 list-disc text-xs text-gray-600">
+                                          {contexts.map((context, ctxIdx) => (
+                                            <li key={ctxIdx}>{context}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                           

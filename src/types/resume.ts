@@ -21,6 +21,9 @@ export interface ResumeScoreDetail {
   matches: string[];
   misses: string[];
   feedback?: string;
+  contexts?: {
+    [skill: string]: string[];
+  };
 }
 
 export interface ResumeScore {

@@ -27,8 +27,8 @@ app.add_middleware(
 )
 
 # Azure OpenAI configuration
-endpoint = "https://your-azure-openai-endpoint.openai.azure.com/"
-api_key = "YOUR_API_KEY_HERE"
+endpoint = ""
+api_key = ""
 api_version = "2024-02-15-preview"
 deployment_name = "gpt-4o"
 
@@ -91,6 +91,7 @@ class ResumeScoreDetail(BaseModel):
     matches: List[str]
     misses: List[str]
     feedback: str
+    contexts: Optional[Dict[str, List[str]]] = None
 
 class ResumeScore(BaseModel):
     resumeId: str
@@ -248,13 +249,104 @@ def calculate_keyword_match(resume_text, job_description_text):
 
 def calculate_skills_match(resume_text, required_skills):
     """Calculate skills match score based on required skills."""
+    if not resume_text or not required_skills:
+        return 0, [], required_skills
+
     matches = []
+    resume_lower = resume_text.lower()
     
+    # Common technology abbreviations and their full forms
+    tech_synonyms = {
+        "js": ["javascript"],
+        "ts": ["typescript"],
+        "py": ["python"],
+        "react": ["reactjs", "react.js", "react js"],
+        "react native": ["reactnative"],
+        "node": ["node.js", "nodejs", "node js"],
+        "vue": ["vuejs", "vue.js", "vue js"],
+        "angular": ["angularjs", "angular.js", "angular js"],
+        "ai": ["artificial intelligence"],
+        "ml": ["machine learning"],
+        "dl": ["deep learning"],
+        "db": ["database"],
+        "ui": ["user interface"],
+        "ux": ["user experience"],
+        "aws": ["amazon web services"],
+        "gcp": ["google cloud platform", "google cloud"],
+        "azure": ["microsoft azure"],
+        "k8s": ["kubernetes"],
+        "ci/cd": ["ci", "cd", "continuous integration", "continuous deployment", "continuous delivery"],
+        "oop": ["object oriented programming", "object-oriented programming"],
+        ".net": ["dotnet", "dot net", "asp.net", "asp net"],
+        "c#": ["csharp", "c sharp"],
+        "java": ["java programming", "core java"],
+        "nlp": ["natural language processing"]
+    }
+    
+    # Convert skill variations to standard forms
+    skill_variations = {}
+    
+    # Build a comprehensive synonym map
     for skill in required_skills:
-        # Clean up skill name for better matching
+        skill_lower = skill.lower().strip()
+        # Add the original skill
+        if skill_lower not in skill_variations:
+            skill_variations[skill_lower] = skill
+            
+        # Add variations with spaces, hyphens, dots
+        variations = [
+            skill_lower.replace(' ', ''),  # Remove spaces
+            skill_lower.replace(' ', '-'),  # Replace spaces with hyphens
+            skill_lower.replace(' ', '.'),  # Replace spaces with dots
+            skill_lower.replace('-', ' '),  # Replace hyphens with spaces
+            skill_lower.replace('.', ' '),  # Replace dots with spaces
+        ]
+        
+        for variation in variations:
+            if variation and variation != skill_lower:
+                skill_variations[variation] = skill
+                
+        # Add known synonyms
+        skill_key = skill_lower.strip()
+        if skill_key in tech_synonyms:
+            for synonym in tech_synonyms[skill_key]:
+                skill_variations[synonym] = skill
+                
+        # Also check if this skill is a synonym for other skills
+        for tech, synonyms in tech_synonyms.items():
+            if skill_lower in synonyms:
+                skill_variations[tech] = skill
+    
+    # Check for skills in resume using better pattern matching
+    for skill_var, original_skill in skill_variations.items():
+        # Escape special regex characters
+        pattern = re.escape(skill_var)
+        
+        # Different matching patterns
+        patterns = [
+            r'\b' + pattern + r'\b',  # Exact word boundary match
+            r'\b' + pattern + r's\b',  # Plural form
+            r'\b' + pattern + r'ing\b',  # Gerund form
+            r'\b' + pattern + r'[\-\s]based\b',  # For "X-based" pattern
+            r'\b' + pattern + r'[\-\s]related\b',  # For "X-related" pattern
+            r'\bexperience\s+(?:with|in|using)?\s+' + pattern + r'\b',  # "experience with X" pattern
+            r'\bknowledge\s+of\s+' + pattern + r'\b',  # "knowledge of X" pattern
+            r'\bproficient\s+(?:with|in)?\s+' + pattern + r'\b',  # "proficient in X" pattern
+            r'\bskills?\s+(?:with|in)?\s+' + pattern + r'\b',  # "skills in X" pattern
+        ]
+        
+        # Check all patterns
+        for p in patterns:
+            if re.search(p, resume_lower, re.IGNORECASE):
+                if original_skill not in matches:
+                    matches.append(original_skill)
+                break
+    
+    # Also check for exact skills to catch anything missed
+    for skill in required_skills:
         skill_clean = skill.lower().strip()
         # Look for the skill as a whole word or phrase
-        if re.search(r'\b' + re.escape(skill_clean) + r'\b', resume_text.lower()):
+        if skill not in matches and re.search(r'\b' + re.escape(skill_clean) + r'\b', resume_lower):
             matches.append(skill)
     
     # Calculate score (0-100)
@@ -264,7 +356,12 @@ def calculate_skills_match(resume_text, required_skills):
     score = min(100, int((len(matches) / len(required_skills)) * 100))
     misses = [s for s in required_skills if s not in matches]
     
-    return score, matches, misses
+    # Provide more detailed context about matches
+    detailed_matches = []
+    for match in matches:
+        detailed_matches.append(match)
+    
+    return score, detailed_matches, misses
 
 def extract_experience_info(resume_text):
     """Extract years of experience from resume text."""
@@ -429,6 +526,275 @@ def calculate_education_match(resume_text, job_requirements):
     
     return score, matches, misses
 
+def extract_resume_sections(resume_text):
+    """Extract different sections from a resume."""
+    # Define common section headers in resumes
+    section_headers = {
+        'education': ['education', 'academic background', 'academic qualifications', 'qualifications', 'degrees'],
+        'experience': ['experience', 'work experience', 'employment history', 'work history', 'professional experience', 'career history'],
+        'skills': ['skills', 'technical skills', 'core skills', 'competencies', 'expertise', 'technical expertise', 'proficiencies'],
+        'projects': ['projects', 'personal projects', 'academic projects', 'key projects', 'project experience', 'project work'],
+        'achievements': ['achievements', 'accomplishments', 'awards', 'honors', 'recognitions'],
+        'certifications': ['certifications', 'certificates', 'professional certifications', 'accreditations'],
+        'summary': ['summary', 'professional summary', 'profile', 'about me', 'career objective', 'objective', 'career summary']
+    }
+    
+    # Initialize sections dictionary
+    sections = {
+        'education': "",
+        'experience': "",
+        'skills': "",
+        'projects': "",
+        'achievements': "",
+        'certifications': "",
+        'summary': "",
+        'other': ""  # For text not categorized into specific sections
+    }
+    
+    # Split resume into lines
+    lines = resume_text.split('\n')
+    
+    # Initialize variables to track current section
+    current_section = 'other'
+    section_content = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Check if this line is a section header
+        found_header = False
+        for section, headers in section_headers.items():
+            # Look for section headers (case insensitive)
+            if any(header.lower() in line.lower() for header in headers) and len(line) < 50:
+                # If we were collecting content for a previous section, save it
+                if section_content:
+                    sections[current_section] += "\n".join(section_content) + "\n"
+                    section_content = []
+                
+                # Switch to new section
+                current_section = section
+                found_header = True
+                break
+        
+        # If not a header, add to current section content
+        if not found_header:
+            section_content.append(line)
+    
+    # Add the last section content
+    if section_content:
+        sections[current_section] += "\n".join(section_content)
+    
+    return sections
+
+def analyze_resume_projects(resume_text):
+    """Analyze projects mentioned in the resume to extract skills and experience."""
+    sections = extract_resume_sections(resume_text)
+    projects_text = sections['projects']
+    
+    if not projects_text:
+        # Try to find projects in experience section if not found in dedicated section
+        experience_text = sections['experience']
+        
+        # Look for project indicators in experience
+        project_indicators = ['project:', 'project -', 'project name:', 'developed', 'implemented', 'created', 'built']
+        for indicator in project_indicators:
+            if indicator.lower() in experience_text.lower():
+                projects_text = experience_text
+                break
+    
+    project_skills = []
+    project_descriptions = []
+    
+    if projects_text:
+        # Split by potential project separators
+        project_chunks = re.split(r'\n(?=[\•\-\*]\s+|[A-Z][a-z]+\s+[Pp]roject:?|[Pp]roject\s+\d+:?)', projects_text)
+        
+        for chunk in project_chunks:
+            if len(chunk.strip()) > 20:  # Ignore very short chunks
+                project_descriptions.append(chunk.strip())
+                
+                # Extract technical terms that might be skills
+                doc = nlp(chunk)
+                for token in doc:
+                    if token.pos_ in ['NOUN', 'PROPN'] and len(token.text) > 2 and not token.is_stop:
+                        potential_skill = token.text.lower()
+                        project_skills.append(potential_skill)
+    
+    return project_descriptions, project_skills
+
+def extract_contextual_skills(resume_text, job_skills):
+    """
+    Extract skills from the resume with context awareness.
+    Looks for skills in different sections and understands the context they're mentioned in.
+    """
+    # Get resume sections
+    sections = extract_resume_sections(resume_text)
+    
+    # Extract projects and their skills
+    project_descriptions, project_skills = analyze_resume_projects(resume_text)
+    
+    # Create a dictionary to track where skills are found and their context
+    skill_contexts = {}
+    
+    # Common technology abbreviations and their full forms
+    tech_synonyms = {
+        "js": ["javascript"],
+        "ts": ["typescript"],
+        "py": ["python"],
+        "react": ["reactjs", "react.js", "react js"],
+        "react native": ["reactnative"],
+        "node": ["node.js", "nodejs", "node js"],
+        "vue": ["vuejs", "vue.js", "vue js"],
+        "angular": ["angularjs", "angular.js", "angular js"],
+        "ai": ["artificial intelligence"],
+        "ml": ["machine learning"],
+        "dl": ["deep learning"],
+        "db": ["database"],
+        "ui": ["user interface"],
+        "ux": ["user experience"],
+        "aws": ["amazon web services"],
+        "gcp": ["google cloud platform", "google cloud"],
+        "azure": ["microsoft azure"],
+        "k8s": ["kubernetes"],
+        "ci/cd": ["ci", "cd", "continuous integration", "continuous deployment", "continuous delivery"],
+        "oop": ["object oriented programming", "object-oriented programming"],
+        ".net": ["dotnet", "dot net", "asp.net", "asp net"],
+        "c#": ["csharp", "c sharp"],
+        "java": ["java programming", "core java"],
+        "nlp": ["natural language processing"]
+    }
+    
+    # Build a dictionary of skill variations for each job skill
+    skill_variations = {}
+    for skill in job_skills:
+        skill_lower = skill.lower().strip()
+        # Add the original skill
+        if skill_lower not in skill_variations:
+            skill_variations[skill_lower] = skill
+            
+        # Add variations with spaces, hyphens, dots
+        variations = [
+            skill_lower.replace(' ', ''),  # Remove spaces
+            skill_lower.replace(' ', '-'),  # Replace spaces with hyphens
+            skill_lower.replace(' ', '.'),  # Replace spaces with dots
+            skill_lower.replace('-', ' '),  # Replace hyphens with spaces
+            skill_lower.replace('.', ' '),  # Replace dots with spaces
+        ]
+        
+        for variation in variations:
+            if variation and variation != skill_lower:
+                skill_variations[variation] = skill
+                
+        # Add known synonyms
+        skill_key = skill_lower.strip()
+        if skill_key in tech_synonyms:
+            for synonym in tech_synonyms[skill_key]:
+                skill_variations[synonym] = skill
+                
+        # Also check if this skill is a synonym for other skills
+        for tech, synonyms in tech_synonyms.items():
+            if skill_lower in synonyms:
+                skill_variations[tech] = skill
+    
+    # Analysis patterns for each section
+    section_patterns = {
+        'experience': [
+            r'(?:used|utilized|developed with|worked with|experienced in|expertise in)\s+([\w\s\.\-\,\/]+)',
+            r'(?:proficient in|experience with|knowledge of)\s+([\w\s\.\-\,\/]+)'
+        ],
+        'skills': [
+            r'[\•\-\*]\s*([\w\s\.\-\,\/]+)',
+            r'([\w\s\.\-\,\/]+?)(?:[\:\,]|\s+and\s+)'
+        ],
+        'projects': [
+            r'(?:using|with|built with|developed with|implemented using)\s+([\w\s\.\-\,\/]+)',
+            r'(?:technologies|tech stack|tools|frameworks|languages)(?:\s+used)?(?:\s+include)?(?:\s*:)?\s+([\w\s\.\-\,\/]+)'
+        ],
+        'education': [
+            r'(?:studied|coursework in|focused on|specialized in)\s+([\w\s\.\-\,\/]+)'
+        ]
+    }
+    
+    # Analyze each section for skills with context
+    for section_name, section_text in sections.items():
+        if not section_text:
+            continue
+            
+        # Check for direct skill mentions in this section
+        for skill_var, original_skill in skill_variations.items():
+            # Escape special regex characters
+            pattern = re.escape(skill_var)
+            
+            # Different matching patterns based on section
+            if section_name in section_patterns:
+                matched = False
+                
+                # Try section-specific patterns first
+                for p in section_patterns[section_name]:
+                    matches = re.findall(p, section_text, re.IGNORECASE)
+                    for match in matches:
+                        if isinstance(match, str) and skill_var in match.lower():
+                            if original_skill not in skill_contexts:
+                                skill_contexts[original_skill] = []
+                            context = f"Found in {section_name} section: '{match.strip()}'"
+                            if context not in skill_contexts[original_skill]:
+                                skill_contexts[original_skill].append(context)
+                            matched = True
+                
+                # Also try direct word boundary match
+                if not matched:
+                    if re.search(r'\b' + pattern + r'\b', section_text, re.IGNORECASE):
+                        if original_skill not in skill_contexts:
+                            skill_contexts[original_skill] = []
+                        context = f"Mentioned in {section_name} section"
+                        if context not in skill_contexts[original_skill]:
+                            skill_contexts[original_skill].append(context)
+            else:
+                # For sections without specific patterns, use simple word boundary match
+                if re.search(r'\b' + pattern + r'\b', section_text, re.IGNORECASE):
+                    if original_skill not in skill_contexts:
+                        skill_contexts[original_skill] = []
+                    context = f"Mentioned in {section_name} section"
+                    if context not in skill_contexts[original_skill]:
+                        skill_contexts[original_skill].append(context)
+    
+    # Also analyze project descriptions specifically
+    for i, project in enumerate(project_descriptions):
+        for skill_var, original_skill in skill_variations.items():
+            pattern = re.escape(skill_var)
+            if re.search(r'\b' + pattern + r'\b', project, re.IGNORECASE):
+                if original_skill not in skill_contexts:
+                    skill_contexts[original_skill] = []
+                    
+                # Capture a brief project context
+                project_brief = project[:100] + "..." if len(project) > 100 else project
+                context = f"Used in project: '{project_brief}'"
+                if context not in skill_contexts[original_skill]:
+                    skill_contexts[original_skill].append(context)
+    
+    # Return matched skills with their contexts
+    matched_skills = list(skill_contexts.keys())
+    return matched_skills, skill_contexts
+
+def enhanced_skills_match(resume_text, required_skills):
+    """Enhanced skills match with context awareness from different resume sections."""
+    if not resume_text or not required_skills:
+        return 0, [], [], {}
+    
+    # Get contextual skills extraction
+    matched_skills, skill_contexts = extract_contextual_skills(resume_text, required_skills)
+    
+    # Calculate score (0-100)
+    if not required_skills:
+        return 0, [], required_skills, {}
+    
+    score = min(100, int((len(matched_skills) / len(required_skills)) * 100))
+    misses = [s for s in required_skills if s not in matched_skills]
+    
+    return score, matched_skills, misses, skill_contexts
+
 @app.post("/analyze-job-description", response_model=JobDescriptionAnalysis)
 async def analyze_job_description(request: JobDescriptionRequest = Body(...)):
     """
@@ -478,22 +844,27 @@ async def analyze_job_description(request: JobDescriptionRequest = Body(...)):
                 Parse all fields provided including job title, company, department, experience, employment type, 
                 location, salary, requirements, and responsibilities.
                 
-                Organize the content into relevant sections such as:
-                1. Technical Skills
-                2. Soft Skills
-                3. Experience Requirements
-                4. Education Requirements
-                5. Job Responsibilities
-                6. Company Information
-                7. Compensation & Benefits
-                8. Job Details
+                Focus particularly on extracting technical skills, programming languages, frameworks, tools,
+                and specific competencies mentioned in the job. Don't miss any technical skills.
                 
-                For each section, provide a list of clear, concise points.
-                """},
+                Organize the content into relevant sections such as:
+                1. Technical Skills (list ALL technologies, languages, frameworks, tools mentioned)
+                2. Soft Skills (communication, teamwork, etc.)
+                3. Experience Requirements (years needed, domain knowledge)
+                4. Education Requirements (degrees, certifications)
+                5. Job Responsibilities (daily tasks, deliverables)
+                6. Company Information (culture, benefits)
+                7. Compensation & Benefits
+                8. Job Details (location, employment type)
+                
+                For each section, provide a list of clear, concise points. 
+                For skills sections, list each skill separately and include all technical skills mentioned.
+                """
+                },
                 {"role": "user", "content": all_fields_text}
             ],
             temperature=0.3,
-            max_tokens=1500
+            max_tokens=2000
         )
         
         analysis_text = response.choices[0].message.content.strip()
@@ -534,6 +905,15 @@ async def analyze_job_description(request: JobDescriptionRequest = Body(...)):
                 requirement = re.sub(r'^\d+[\.\)]', '', stripped_line).strip()
                 if requirement and current_section:
                     current_requirements.append(requirement)
+            
+            # Check for "keyword:" format
+            elif ':' in stripped_line and not current_section:
+                parts = stripped_line.split(':', 1)
+                if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+                    # This might be a requirement in "key: value" format
+                    requirement = stripped_line
+                    if current_section:
+                        current_requirements.append(requirement)
         
         # Add the last section if it exists
         if current_section and current_requirements:
@@ -559,6 +939,30 @@ async def analyze_job_description(request: JobDescriptionRequest = Body(...)):
                     "requirements": current_requirements
                 })
         
+        # Additional processing for technical skills
+        technical_skills = []
+        for section in sections:
+            # If this is a skills section, extract individual skills
+            if 'skill' in section["section_name"].lower() or 'technolog' in section["section_name"].lower():
+                for req in section["requirements"]:
+                    # Try to extract individual skills from comma-separated lists or multi-skill requirements
+                    if ',' in req:
+                        # Split by comma and process each item
+                        parts = [p.strip() for p in req.split(',')]
+                        for part in parts:
+                            if part and len(part) > 1:  # Skip empty or single-char parts
+                                technical_skills.append(part)
+                    else:
+                        # Handle skill requirements without commas
+                        technical_skills.append(req)
+        
+        # If we found technical skills, add them as a separate section if not already present
+        if technical_skills and not any('technical skill' in s["section_name"].lower() for s in sections):
+            sections.append({
+                "section_name": "Individual Technical Skills",
+                "requirements": technical_skills
+            })
+        
         # Return the analysis
         return {"sections": sections}
         
@@ -571,6 +975,50 @@ async def analyze_resumes(request: ResumeAnalysisRequest = Body(...)):
     try:
         job_description = request.jobDescription
         resumes = request.resumes
+        
+        # Validate and preprocess job description
+        if not job_description.skills or len(job_description.skills) == 0:
+            # Extract skills from job description if none were provided
+            # This could happen if the job description wasn't analyzed separately before
+            extracted_skills = []
+            
+            # Extract skills that are explicitly mentioned with common phrases
+            skill_phrases = [
+                r'proficiency (?:in|with) ([\w\s\./]+)',
+                r'experience (?:in|with) ([\w\s\./]+)',
+                r'knowledge of ([\w\s\./]+)',
+                r'familiar with ([\w\s\./]+)', 
+                r'skills (?:in|with) ([\w\s\./]+)',
+                r'expertise (?:in|with) ([\w\s\./]+)'
+            ]
+            
+            for pattern in skill_phrases:
+                matches = re.findall(pattern, job_description.description, re.IGNORECASE)
+                for match in matches:
+                    # Clean up and add to extracted skills
+                    skill = match.strip().rstrip('.,:;')
+                    if len(skill) > 2:  # Ignore very short matches
+                        extracted_skills.append(skill)
+            
+            # Also extract technical terms that might be skills
+            doc = nlp(job_description.description)
+            for ent in doc.ents:
+                if ent.label_ in ['ORG', 'PRODUCT', 'WORK_OF_ART'] and len(ent.text) > 2:
+                    extracted_skills.append(ent.text)
+            
+            # Add common programming languages and frameworks if they appear
+            common_tech = [
+                "JavaScript", "TypeScript", "Python", "Java", "C#", "C++", "Ruby", "PHP", 
+                "React", "Angular", "Vue", "Node.js", "Django", "Flask", "Express", 
+                "AWS", "Azure", "GCP", "SQL", "NoSQL", "MongoDB"
+            ]
+            
+            for tech in common_tech:
+                if re.search(r'\b' + re.escape(tech) + r'\b', job_description.description, re.IGNORECASE):
+                    extracted_skills.append(tech)
+            
+            # Remove duplicates and update job description
+            job_description.skills = list(set(extracted_skills))
         
         results = []
         
@@ -613,18 +1061,43 @@ async def analyze_resumes(request: ResumeAnalysisRequest = Body(...)):
                     print(f"Error processing base64 data: {str(e)}")
                     # Continue with the provided content if extraction fails
             
-            # Calculate various matching scores
+            # Get resume sections for better analysis
+            resume_sections = extract_resume_sections(resume_text)
+            project_descriptions, project_skills = analyze_resume_projects(resume_text)
+            
+            # Calculate keyword match
             keyword_score, keyword_matches, keyword_misses = calculate_keyword_match(
                 resume_text, job_description.description
             )
             
-            skills_score, skills_matches, skills_misses = calculate_skills_match(
+            # Ensure we have skills to match against
+            if not job_description.skills:
+                # If still no skills, use a general fallback
+                job_description.skills = ["Programming", "Development", "Software", "Web", "Mobile", "Cloud"]
+            
+            # Use our enhanced skills match function for better context-aware matching
+            skills_score, skills_matches, skills_misses, skills_contexts = enhanced_skills_match(
                 resume_text, job_description.skills
             )
             
-            experience_score, experience_matches, experience_misses = calculate_experience_match(
-                resume_text, job_description.requirements
-            )
+            # Log values for debugging
+            print(f"Resume: {resume.fileName}")
+            print(f"Skills to match: {job_description.skills}")
+            print(f"Skills matched: {skills_matches}")
+            print(f"Skills score: {skills_score}")
+            
+            # Calculate experience match with added context from projects
+            experience_text = resume_sections['experience']
+            if project_descriptions:
+                # Add project information to experience assessment
+                combined_experience = experience_text + "\n" + "\n".join(project_descriptions)
+                experience_score, experience_matches, experience_misses = calculate_experience_match(
+                    combined_experience, job_description.requirements
+                )
+            else:
+                experience_score, experience_matches, experience_misses = calculate_experience_match(
+                    resume_text, job_description.requirements
+                )
             
             education_score, education_matches, education_misses = calculate_education_match(
                 resume_text, job_description.requirements
@@ -649,13 +1122,18 @@ async def analyze_resumes(request: ResumeAnalysisRequest = Body(...)):
             else:
                 evaluation_details.append(f"Low keyword match. The resume lacks many important terms from the job description.")
             
-            # Skills match evaluation
+            # Skills match evaluation with context information
             if skills_score >= 80:
-                evaluation_details.append(f"Excellent skills alignment. The resume demonstrates proficiency in required skills.")
+                evaluation_details.append(f"Excellent skills alignment. The resume demonstrates proficiency in {len(skills_matches)} of {len(job_description.skills)} required skills.")
             elif skills_score >= 60:
-                evaluation_details.append(f"Good skills match, but some key skills could be highlighted more prominently.")
+                evaluation_details.append(f"Good skills match, but some key skills could be highlighted more prominently. Found {len(skills_matches)} of {len(job_description.skills)} required skills.")
             else:
-                evaluation_details.append(f"Low skills match. Consider highlighting or adding required skills.")
+                evaluation_details.append(f"Low skills match. Only found {len(skills_matches)} of {len(job_description.skills)} required skills.")
+            
+            # Add project insight
+            if project_descriptions:
+                num_projects = len(project_descriptions)
+                evaluation_details.append(f"Resume includes {num_projects} projects that demonstrate practical application of skills.")
             
             # Experience match evaluation
             if experience_score >= 80:
@@ -673,7 +1151,33 @@ async def analyze_resumes(request: ResumeAnalysisRequest = Body(...)):
             else:
                 evaluation_details.append(f"Educational background may need supplementing with relevant certifications or courses for this role.")
             
+            # Enhanced skills details with context
+            detailed_skill_feedback = []
+            for skill in skills_matches:
+                if skill in skills_contexts:
+                    contexts = skills_contexts[skill]
+                    if contexts:
+                        # Use the first context for each skill (we will include others in the detailed view)
+                        detailed_skill_feedback.append(f"{skill}: {contexts[0]}")
+            
+            if detailed_skill_feedback:
+                evaluation_details.append("Skill context analysis: " + "; ".join(detailed_skill_feedback[:3]) + 
+                                        (f" and {len(detailed_skill_feedback) - 3} more" if len(detailed_skill_feedback) > 3 else ""))
+            
             # Create detailed score breakdowns
+            # Enhanced skills details to include the context information
+            skills_detail_matches = []
+            for skill in skills_matches:
+                if skill in skills_contexts:
+                    contexts = skills_contexts[skill]
+                    if contexts:
+                        # Include skill with its first context
+                        skills_detail_matches.append(f"{skill} ({contexts[0]})")
+                    else:
+                        skills_detail_matches.append(skill)
+                else:
+                    skills_detail_matches.append(skill)
+            
             score_details = [
                 {
                     "category": "Keywords",
@@ -685,25 +1189,42 @@ async def analyze_resumes(request: ResumeAnalysisRequest = Body(...)):
                 {
                     "category": "Skills",
                     "score": skills_score,
-                    "matches": skills_matches,
+                    "matches": skills_detail_matches,
                     "misses": skills_misses,
-                    "feedback": evaluation_details[1]
+                    "feedback": evaluation_details[1] if len(evaluation_details) > 1 else "",
+                    "contexts": skills_contexts   # Add the skill contexts to the Skills detail
                 },
                 {
                     "category": "Experience",
                     "score": experience_score,
                     "matches": experience_matches,
                     "misses": experience_misses,
-                    "feedback": evaluation_details[2]
+                    "feedback": evaluation_details[-3] if len(evaluation_details) >= 3 else ""
                 },
                 {
                     "category": "Education",
                     "score": education_score,
                     "matches": education_matches,
                     "misses": education_misses,
-                    "feedback": evaluation_details[3]
+                    "feedback": evaluation_details[-2] if len(evaluation_details) >= 2 else ""
                 }
             ]
+            
+            # Add contextual information about projects if available
+            if project_descriptions:
+                project_highlights = []
+                for i, project in enumerate(project_descriptions[:3]):  # Include up to 3 projects
+                    # Truncate long project descriptions
+                    brief = project[:100] + "..." if len(project) > 100 else project
+                    project_highlights.append(brief)
+                
+                score_details.append({
+                    "category": "Projects",
+                    "score": min(100, 60 + len(project_descriptions) * 10),  # More projects = higher score
+                    "matches": project_highlights,
+                    "misses": [],
+                    "feedback": f"Resume includes {len(project_descriptions)} projects demonstrating practical skills application."
+                })
             
             # Create the resume score object
             resume_score = {
