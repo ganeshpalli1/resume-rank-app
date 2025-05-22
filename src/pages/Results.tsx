@@ -308,6 +308,16 @@ const Results = () => {
                             {score.overallScore}%
                           </div>
                         </div>
+                        
+                        <div className="flex-shrink-0 ml-4">
+                          <Button
+                            size="sm"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                            onClick={() => navigate(`/interview-setup?resumeId=${score.resumeId}`)}
+                          >
+                            Send Interview Link
+                          </Button>
+                        </div>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-6 mt-4">
@@ -607,6 +617,16 @@ const Results = () => {
                                   {score.overallScore}%
                                 </div>
                               </div>
+                              
+                              <div className="flex-shrink-0 ml-3">
+                                <Button
+                                  size="sm"
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs py-1"
+                                  onClick={() => navigate(`/interview-setup?resumeId=${score.resumeId}`)}
+                                >
+                                  Send Interview
+                                </Button>
+                              </div>
                             </motion.div>
                           ))}
                       </div>
@@ -652,6 +672,14 @@ const Results = () => {
                                   )}>
                                     {score.overallScore}%
                                   </div>
+                                  
+                                  <Button
+                                    size="sm"
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white ml-3"
+                                    onClick={() => navigate(`/interview-setup?resumeId=${score.resumeId}`)}
+                                  >
+                                    Send Interview
+                                  </Button>
                                 </div>
                               </div>
                               
